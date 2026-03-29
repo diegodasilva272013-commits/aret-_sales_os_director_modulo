@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { CheckCircle, ChevronLeft, ChevronRight, DollarSign } from 'lucide-react'
+import { CheckCircle, ChevronLeft, ChevronRight, DollarSign, LogOut } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 interface SaleDetail {
@@ -691,6 +691,11 @@ export default function CloserWizard({ existingReport }: Props) {
 
   if (submitted) {
     const totalCerrado = data.detalle_ventas.reduce((sum, s) => sum + s.monto, 0)
+    const handleLogout = async () => {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      router.push('/login')
+    }
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#080B14' }}>
         <div className="glass-strong rounded-2xl p-8 max-w-md w-full text-center animate-fade-in-up">
@@ -698,7 +703,7 @@ export default function CloserWizard({ existingReport }: Props) {
             <CheckCircle size={32} className="text-emerald-400" />
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">Reporte enviado</h2>
-          <p className="text-gray-400 mb-6">Excelente trabajo hoy, {nombre}!</p>
+          <p className="text-gray-400 mb-4">Excelente trabajo hoy, {nombre}!</p>
           <div className="grid grid-cols-2 gap-3 text-left">
             {[
               { label: 'Citas Recibidas', value: data.citas_recibidas },
@@ -716,6 +721,14 @@ export default function CloserWizard({ existingReport }: Props) {
             <DollarSign size={16} className="text-emerald-400 inline mr-1" />
             <span className="text-emerald-400 font-semibold">{formatCurrency(totalCerrado)} en ventas hoy</span>
           </div>
+          <p className="text-gray-500 text-xs mt-4 mb-4">Si cometiste un error, contactá al director para que lo corrija.</p>
+          <button
+            onClick={handleLogout}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800 transition-colors"
+          >
+            <LogOut size={16} />
+            Cerrar sesión
+          </button>
         </div>
       </div>
     )

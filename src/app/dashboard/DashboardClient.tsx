@@ -13,6 +13,7 @@ import ComisionesTable from '@/components/dashboard/ComisionesTable'
 import AlertasPanel from '@/components/dashboard/AlertasPanel'
 import EmbudoTable from '@/components/dashboard/EmbudoTable'
 import ReportesHoy from '@/components/dashboard/ReportesHoy'
+import EditReportModal from '@/components/dashboard/EditReportModal'
 import Filters from '@/components/dashboard/Filters'
 import Link from 'next/link'
 import {
@@ -65,8 +66,8 @@ interface DashboardData {
     motivo_otro: number
   }>
   reportesHoy: {
-    setters: Array<{ id: string; nombre: string; enviado: boolean; asistio_reunion?: boolean | null }>
-    closers: Array<{ id: string; nombre: string; enviado: boolean; asistio_reunion?: boolean | null }>
+    setters: Array<{ id: string; nombre: string; enviado: boolean; asistio_reunion?: boolean | null; reporte_id?: string | null }>
+    closers: Array<{ id: string; nombre: string; enviado: boolean; asistio_reunion?: boolean | null; reporte_id?: string | null }>
   }
   reunionStats?: {
     setters_asistieron: number
@@ -115,6 +116,7 @@ export default function DashboardClient({ nombre: nombreProp }: { nombre: string
   const [data, setData] = useState<DashboardData | null>(null)
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [editingReport, setEditingReport] = useState<{ id: string; tipo: 'setter' | 'closer' } | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -545,7 +547,7 @@ export default function DashboardClient({ nombre: nombreProp }: { nombre: string
             {/* Reportes + Alertas */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
               <SectionCard title="Reportes de Hoy" icon={UserCheck}>
-                <ReportesHoy data={data.reportesHoy} />
+                <ReportesHoy data={data.reportesHoy} onEditReport={(id, tipo) => setEditingReport({ id, tipo })} />
               </SectionCard>
               <div className="lg:col-span-2">
                 <SectionCard title="Alertas del Sistema" icon={Bell}>
@@ -623,6 +625,15 @@ export default function DashboardClient({ nombre: nombreProp }: { nombre: string
 
           </main>
         </>
+      )}
+
+      {editingReport && (
+        <EditReportModal
+          reporteId={editingReport.id}
+          tipo={editingReport.tipo}
+          onClose={() => setEditingReport(null)}
+          onSaved={() => fetchData()}
+        />
       )}
     </div>
   )

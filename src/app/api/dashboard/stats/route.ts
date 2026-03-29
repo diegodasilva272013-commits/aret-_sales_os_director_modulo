@@ -151,11 +151,11 @@ export async function GET(request: NextRequest) {
     reportesHoy: {
       setters: setters.map(s => {
         const rep = todaySetterReports.find(r => r.setter_id === s.id)
-        return { ...s, enviado: todaySetterIds.has(s.id), asistio_reunion: rep?.asistio_reunion ?? null }
+        return { ...s, enviado: todaySetterIds.has(s.id), asistio_reunion: rep?.asistio_reunion ?? null, reporte_id: rep?.id ?? null }
       }),
       closers: closers.map(c => {
         const rep = todayCloserReports.find(r => r.closer_id === c.id)
-        return { ...c, enviado: todayCloserIds.has(c.id), asistio_reunion: rep?.asistio_reunion ?? null }
+        return { ...c, enviado: todayCloserIds.has(c.id), asistio_reunion: rep?.asistio_reunion ?? null, reporte_id: rep?.id ?? null }
       }),
     },
     reunionStats: {

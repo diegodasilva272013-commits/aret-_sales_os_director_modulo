@@ -3,7 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { CheckCircle, ChevronLeft, ChevronRight, LogOut } from 'lucide-react'
+
+interface CitaDetail {
+  nombre_lead: string
+  horario: string
+  comentario: string
+}
 
 interface SetterData {
   leads_recibidos: number
@@ -16,6 +22,7 @@ interface SetterData {
   citas_calificadas: number
   motivos_noshow: string
   comentario: string
+  detalle_citas: CitaDetail[]
   // Lanzamiento fields
   mensajes_enviados: number
   respuestas_obtenidas: number
@@ -39,6 +46,7 @@ const initialData: SetterData = {
   citas_calificadas: 0,
   motivos_noshow: '',
   comentario: '',
+  detalle_citas: [],
   mensajes_enviados: 0,
   respuestas_obtenidas: 0,
   conversaciones_activas: 0,
@@ -232,8 +240,8 @@ export default function SetterWizard({ existingReport }: Props) {
   )
 
   // ---- EVERGREEN STEPS ----
-  // 0: Leads, 1: Intentos, 2: Contactados, 3: Agendadas, 4: Show/NoShow, 5: Reprogramadas, 6: Calificadas, 7: Motivos, 8: Reunion, 9: Comentario, 10: Summary
-  const EVERGREEN_TOTAL = 11
+  // 0: Leads, 1: Intentos, 2: Contactados, 3: Agendadas, 4: DetalleCitas, 5: Show/NoShow, 6: Reprogramadas, 7: Calificadas, 8: Motivos, 9: Reunion, 10: Comentario, 11: Summary
+  const EVERGREEN_TOTAL = 12
 
   // ---- LANZAMIENTO STEPS ----
   // 0: Mensajes, 1: Respuestas+Activas, 2: Leads calificados, 3: Llamadas agendadas DM, 4: Show/NoShow, 5: Reunion, 6: Comentario, 7: Summary
@@ -246,17 +254,49 @@ export default function SetterWizard({ existingReport }: Props) {
     setData(prev => ({ ...prev, [field]: value }))
   }
 
+  function updateCita(index: number, field: keyof CitaDetail, value: string) {
+    setData(prev => {
+      const updated = [...prev.detalle_citas]
+      updated[index] = { ...updated[index], [field]: value }
+      return { ...prev, detalle_citas: updated }
+    })
+  }
+
+  function handleNext() {
+    if (proyectoTipo === 'evergreen') {
+      // After citas_agendadas (step 3), skip detalle_citas if 0
+      if (step === 3 && data.citas_agendadas === 0) {
+        setStep(5)
+        return
+      }
+      // Entering detalle_citas step: auto-size array
+      if (step === 3 && data.citas_agendadas > 0) {
+        const count = data.citas_agendadas
+        setData(prev => {
+          const arr = [...prev.detalle_citas]
+          while (arr.length < count) arr.push({ nombre_lead: '', horario: '', comentario: '' })
+          return { ...prev, detalle_citas: arr.slice(0, count) }
+        })
+      }
+    }
+    setStep(s => s + 1)
+  }
+
   async function handleSubmit() {
     setLoading(true)
     setError('')
     const supabase = createClient()
 
+    const { detalle_citas, ...restData } = data
+    const validCitas = detalle_citas.filter(c => c.nombre_lead.trim())
+
     const { error: err } = await supabase.from('reportes_setter').upsert({
       setter_id: userId,
       fecha: new Date().toISOString().split('T')[0],
-      ...data,
+      ...restData,
       asistio_reunion: data.nota_reunion === 'sin_reunion' ? null : (data.asistio_reunion ?? false),
       ...(proyectoId ? { proyecto_id: proyectoId } : {}),
+      ...(validCitas.length > 0 ? { detalle_citas: validCitas } : {}),
     }, { onConflict: 'setter_id,fecha' })
 
     if (err) {
@@ -288,6 +328,39 @@ export default function SetterWizard({ existingReport }: Props) {
           <BigNumberInput value={data.citas_agendadas} onChange={v => updateField('citas_agendadas', v)} />
         </StepContent>
       case 4:
+        return <StepContent title="Detalle de Citas" question="Completá los datos de cada cita agendada" hint="Nombre del lead, horario y un breve comentario">
+          <div className="mt-6 space-y-4">
+            {data.detalle_citas.map((cita, i) => (
+              <div key={i} className="bg-[#0D1117] border border-gray-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">Cita {i + 1}</span>
+                </div>
+                <input
+                  type="text"
+                  value={cita.nombre_lead}
+                  onChange={e => updateCita(i, 'nombre_lead', e.target.value)}
+                  placeholder="Nombre del lead"
+                  className="w-full bg-[#111827] border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors text-sm"
+                />
+                <input
+                  type="text"
+                  value={cita.horario}
+                  onChange={e => updateCita(i, 'horario', e.target.value)}
+                  placeholder="Horario (ej: 10:00)"
+                  className="w-full bg-[#111827] border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors text-sm"
+                />
+                <input
+                  type="text"
+                  value={cita.comentario}
+                  onChange={e => updateCita(i, 'comentario', e.target.value)}
+                  placeholder="Comentario breve (opcional)"
+                  className="w-full bg-[#111827] border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors text-sm"
+                />
+              </div>
+            ))}
+          </div>
+        </StepContent>
+      case 5:
         return <StepContent title="Show / No Show" question="¿Cuántas citas fueron show y no show?">
           <div className="grid grid-cols-2 gap-4 mt-6">
             <div>
@@ -304,15 +377,15 @@ export default function SetterWizard({ existingReport }: Props) {
             </div>
           </div>
         </StepContent>
-      case 5:
+      case 6:
         return <StepContent title="Citas Reprogramadas" question="¿Cuántas citas fueron reprogramadas?" hint="Citas que se movieron a otro horario">
           <BigNumberInput value={data.citas_reprogramadas} onChange={v => updateField('citas_reprogramadas', v)} />
         </StepContent>
-      case 6:
+      case 7:
         return <StepContent title="Citas Calificadas" question="¿Cuántas citas fueron calificadas?" hint="Prospectos listos para el proceso de venta">
           <BigNumberInput value={data.citas_calificadas} onChange={v => updateField('citas_calificadas', v)} />
         </StepContent>
-      case 7:
+      case 8:
         return <StepContent title="Motivos No Show" question="¿Cuáles fueron los motivos de no show?" hint="Describe brevemente los motivos principales">
           <div className="mt-6">
             <textarea
@@ -325,7 +398,7 @@ export default function SetterWizard({ existingReport }: Props) {
             />
           </div>
         </StepContent>
-      case 8:
+      case 9:
         return <StepContent title="Reunión de Equipo" question="¿Asististe a la reunión del equipo hoy?">
           <ReunionStep
             value={data.asistio_reunion}
@@ -335,7 +408,7 @@ export default function SetterWizard({ existingReport }: Props) {
             onNoMeeting={() => { updateField('asistio_reunion', null); updateField('nota_reunion', 'sin_reunion') }}
           />
         </StepContent>
-      case 9:
+      case 10:
         return <StepContent title="Comentario General" question="¿Algún comentario o novedad del día?" hint="Observaciones importantes, contexto, etc.">
           <div className="mt-6">
             <textarea
@@ -348,7 +421,7 @@ export default function SetterWizard({ existingReport }: Props) {
             />
           </div>
         </StepContent>
-      case 10:
+      case 11:
         return <StepContent title="Resumen" question="Revisá tu reporte antes de enviar">
           <div className="mt-6 space-y-3">
             {[
@@ -367,6 +440,14 @@ export default function SetterWizard({ existingReport }: Props) {
                 <span className="text-white font-bold text-lg">{String(item.value)}</span>
               </div>
             ))}
+            {data.detalle_citas.filter(c => c.nombre_lead).length > 0 && (
+              <div className="bg-[#111827] border border-gray-800 rounded-xl px-4 py-3">
+                <p className="text-gray-400 text-xs mb-2">Detalle de citas</p>
+                {data.detalle_citas.filter(c => c.nombre_lead).map((c, i) => (
+                  <p key={i} className="text-white text-sm">• {c.nombre_lead}{c.horario ? ` — ${c.horario}` : ''}{c.comentario ? ` (${c.comentario})` : ''}</p>
+                ))}
+              </div>
+            )}
             {data.comentario && (
               <div className="bg-[#111827] border border-gray-800 rounded-xl px-4 py-3">
                 <p className="text-gray-400 text-xs mb-1">Comentario</p>
@@ -482,6 +563,11 @@ export default function SetterWizard({ existingReport }: Props) {
   }
 
   if (submitted) {
+    const handleLogout = async () => {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      router.push('/login')
+    }
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#080B14' }}>
         <div className="glass-strong rounded-2xl p-8 max-w-md w-full text-center animate-fade-in-up">
@@ -489,7 +575,15 @@ export default function SetterWizard({ existingReport }: Props) {
             <CheckCircle size={32} className="text-emerald-400" />
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">Reporte enviado</h2>
-          <p className="text-gray-400 mb-6">Tu reporte de hoy fue registrado exitosamente.</p>
+          <p className="text-gray-400 mb-4">Tu reporte de hoy fue registrado exitosamente.</p>
+          <p className="text-gray-500 text-xs mb-6">Si cometiste un error, contactá al director para que lo corrija.</p>
+          <button
+            onClick={handleLogout}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800 transition-colors"
+          >
+            <LogOut size={16} />
+            Cerrar sesión
+          </button>
           <p className="text-gray-600 text-xs mt-6">Hasta mañana, {nombre}!</p>
         </div>
       </div>
@@ -556,7 +650,7 @@ export default function SetterWizard({ existingReport }: Props) {
 
           {step < totalSteps - 1 ? (
             <button
-              onClick={() => setStep(s => s + 1)}
+              onClick={handleNext}
               className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold transition-all shadow-lg"
             >
               Siguiente

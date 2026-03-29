@@ -1,10 +1,11 @@
-import { CheckCircle, Clock, Users } from 'lucide-react'
+import { CheckCircle, Clock, Users, Pencil } from 'lucide-react'
 
 interface Person {
   id: string
   nombre: string
   enviado: boolean
   asistio_reunion?: boolean | null
+  reporte_id?: string | null
 }
 
 interface ReportesHoyData {
@@ -16,7 +17,7 @@ function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 }
 
-function PersonRow({ person, color }: { person: Person; color: string }) {
+function PersonRow({ person, color, onEdit }: { person: Person; color: string; onEdit?: () => void }) {
   return (
     <div className="flex items-center gap-3 py-2">
       <div
@@ -45,6 +46,11 @@ function PersonRow({ person, color }: { person: Person; color: string }) {
           />
         </span>
       )}
+      {person.enviado && onEdit && (
+        <button onClick={onEdit} className="p-1 rounded hover:bg-gray-800 text-gray-500 hover:text-indigo-400 transition-colors" title="Editar reporte">
+          <Pencil size={12} />
+        </button>
+      )}
       {person.enviado ? (
         <div className="flex items-center gap-1.5">
           <div
@@ -70,7 +76,7 @@ function PersonRow({ person, color }: { person: Person; color: string }) {
   )
 }
 
-export default function ReportesHoy({ data }: { data: ReportesHoyData }) {
+export default function ReportesHoy({ data, onEditReport }: { data: ReportesHoyData; onEditReport?: (reporteId: string, tipo: 'setter' | 'closer') => void }) {
   const totalPeople = data.setters.length + data.closers.length
   const totalEnviados = data.setters.filter(s => s.enviado).length + data.closers.filter(c => c.enviado).length
   const pct = totalPeople > 0 ? (totalEnviados / totalPeople) * 100 : 0
@@ -115,7 +121,8 @@ export default function ReportesHoy({ data }: { data: ReportesHoyData }) {
             </p>
             <div className="space-y-1">
               {data.setters.map(person => (
-                <PersonRow key={person.id} person={person} color="#818CF8" />
+                <PersonRow key={person.id} person={person} color="#818CF8"
+                  onEdit={person.enviado && person.reporte_id && onEditReport ? () => onEditReport(person.reporte_id!, 'setter') : undefined} />
               ))}
             </div>
           </div>
@@ -131,7 +138,8 @@ export default function ReportesHoy({ data }: { data: ReportesHoyData }) {
             </p>
             <div className="space-y-1">
               {data.closers.map(person => (
-                <PersonRow key={person.id} person={person} color="#34D399" />
+                <PersonRow key={person.id} person={person} color="#34D399"
+                  onEdit={person.enviado && person.reporte_id && onEditReport ? () => onEditReport(person.reporte_id!, 'closer') : undefined} />
               ))}
             </div>
           </div>
