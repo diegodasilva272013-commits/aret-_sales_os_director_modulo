@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { CheckCircle, ChevronLeft, ChevronRight, DollarSign, LogOut } from 'lucide-react'
+import { CheckCircle, ChevronLeft, ChevronRight, DollarSign, LogOut, Upload, Link2, X, FileCheck } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 interface SaleDetail {
@@ -12,6 +12,8 @@ interface SaleDetail {
   cobrado: number
   pendiente: number
   medio_pago: string
+  comprobante_url: string
+  comprobante_tipo: 'archivo' | 'drive' | ''
 }
 
 interface CloserData {
@@ -193,6 +195,7 @@ export default function CloserWizard({ existingReport }: Props) {
   const [proyectoId, setProyectoId] = useState<string | null>(null)
   const [showProyectoSelector, setShowProyectoSelector] = useState(false)
   const [proyectoTipo, setProyectoTipo] = useState<'evergreen' | 'lanzamiento'>('evergreen')
+  const [uploading, setUploading] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     const supabase = createClient()
@@ -287,6 +290,50 @@ export default function CloserWizard({ existingReport }: Props) {
     })
   }
 
+  async function handleFileUpload(index: number, file: File) {
+    setUploading(prev => ({ ...prev, [index]: true }))
+    try {
+      const supabase = createClient()
+      const fecha = new Date().toISOString().split('T')[0]
+      const ext = file.name.split('.').pop() || 'bin'
+      const safeName = `${fecha}/${userId}/${index}_${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('comprobantes')
+        .upload(safeName, file, { upsert: true })
+      if (upErr) {
+        setError(`Error al subir archivo: ${upErr.message}`)
+        return
+      }
+      const { data: urlData } = supabase.storage.from('comprobantes').getPublicUrl(safeName)
+      setData(prev => {
+        const updated = [...prev.detalle_ventas]
+        updated[index] = { ...updated[index], comprobante_url: urlData.publicUrl, comprobante_tipo: 'archivo' }
+        return { ...prev, detalle_ventas: updated }
+      })
+      setError('')
+    } catch {
+      setError('Error al subir el archivo. Intentá de nuevo.')
+    } finally {
+      setUploading(prev => ({ ...prev, [index]: false }))
+    }
+  }
+
+  function setDriveLink(index: number, url: string) {
+    setData(prev => {
+      const updated = [...prev.detalle_ventas]
+      updated[index] = { ...updated[index], comprobante_url: url, comprobante_tipo: url.trim() ? 'drive' : '' }
+      return { ...prev, detalle_ventas: updated }
+    })
+  }
+
+  function clearComprobante(index: number) {
+    setData(prev => {
+      const updated = [...prev.detalle_ventas]
+      updated[index] = { ...updated[index], comprobante_url: '', comprobante_tipo: '' }
+      return { ...prev, detalle_ventas: updated }
+    })
+  }
+
   function handleNext() {
     let nextStep = step + 1
     const saleDetailIdx = 3 // both evergreen and lanzamiento
@@ -304,7 +351,7 @@ export default function CloserWizard({ existingReport }: Props) {
         if (current.length === target) return prev
         if (current.length < target) {
           const newEntries = Array.from({ length: target - current.length }, () => ({
-            cliente: '', monto: 0, cobrado: 0, pendiente: 0, medio_pago: 'transferencia'
+            cliente: '', monto: 0, cobrado: 0, pendiente: 0, medio_pago: 'transferencia', comprobante_url: '', comprobante_tipo: '' as const
           }))
           return { ...prev, detalle_ventas: [...current, ...newEntries] }
         }
@@ -312,11 +359,16 @@ export default function CloserWizard({ existingReport }: Props) {
       })
     }
 
-    // Validate detalle step: all entries must have monto > 0 and cliente
+    // Validate detalle step: all entries must have monto > 0, cliente, and comprobante
     if (step === saleDetailIdx && data.ventas_cerradas > 0) {
       const incomplete = data.detalle_ventas.some(s => !s.cliente.trim() || s.monto <= 0)
       if (incomplete) {
         setError('Completá el nombre del cliente y monto de cada venta antes de continuar.')
+        return
+      }
+      const sinComprobante = data.detalle_ventas.some(s => !s.comprobante_url.trim())
+      if (sinComprobante) {
+        setError('Cada venta necesita un comprobante. Subí un archivo o pegá un link de Google Drive.')
         return
       }
       setError('')
@@ -369,7 +421,7 @@ export default function CloserWizard({ existingReport }: Props) {
   }
 
   const saleDetailStep = (
-    <StepWrapper title="Detalle de Ventas" question="Cargá el detalle de cada venta cerrada" hint={`Tenés ${data.ventas_cerradas} venta${data.ventas_cerradas > 1 ? 's' : ''} para completar`}>
+    <StepWrapper title="Detalle de Ventas" question="Cargá el detalle de cada venta cerrada" hint={`Tenés ${data.ventas_cerradas} venta${data.ventas_cerradas > 1 ? 's' : ''} para completar. Cada venta requiere un comprobante.`}>
       <div className="mt-4 space-y-3">
         {data.detalle_ventas.map((sale, i) => (
           <div key={i} className="bg-[#111827] border border-gray-700 rounded-xl p-4">
@@ -411,6 +463,61 @@ export default function CloserWizard({ existingReport }: Props) {
               <div className="flex justify-between items-center bg-[#0D1117] rounded-lg px-3 py-2">
                 <span className="text-xs text-gray-500">Pendiente:</span>
                 <span className="text-amber-400 text-sm font-bold">{formatCurrency(sale.pendiente)}</span>
+              </div>
+
+              {/* Comprobante section */}
+              <div className="mt-2 border-t border-gray-700 pt-3">
+                <label className="text-xs text-gray-400 mb-2 block font-medium">
+                  📎 Comprobante de pago <span className="text-red-400">*</span>
+                </label>
+                {sale.comprobante_url ? (
+                  <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
+                    <FileCheck size={16} className="text-emerald-400 flex-shrink-0" />
+                    <span className="text-emerald-400 text-xs truncate flex-1">
+                      {sale.comprobante_tipo === 'archivo' ? 'Archivo subido' : 'Link de Drive'}
+                    </span>
+                    <button type="button" onClick={() => clearComprobante(i)}
+                      className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="relative cursor-pointer">
+                        <input type="file" accept="image/*,.pdf,.doc,.docx"
+                          className="hidden"
+                          onChange={e => {
+                            const file = e.target.files?.[0]
+                            if (file) handleFileUpload(i, file)
+                            e.target.value = ''
+                          }}
+                          disabled={uploading[i]}
+                        />
+                        <div className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-all ${
+                          uploading[i]
+                            ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-300'
+                            : 'border-gray-600 hover:border-indigo-500 hover:bg-indigo-500/5 text-gray-300'
+                        }`}>
+                          {uploading[i] ? (
+                            <><div className="w-3 h-3 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" /> Subiendo...</>
+                          ) : (
+                            <><Upload size={14} /> Subir archivo</>
+                          )}
+                        </div>
+                      </label>
+                      <button type="button"
+                        onClick={() => {
+                          const url = prompt('Pegá el link de Google Drive:')
+                          if (url && url.trim()) setDriveLink(i, url.trim())
+                        }}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-600 hover:border-indigo-500 hover:bg-indigo-500/5 text-gray-300 text-xs font-medium transition-all">
+                        <Link2 size={14} /> Link de Drive
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-600">Subí una imagen/PDF o pegá un link de Google Drive</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
