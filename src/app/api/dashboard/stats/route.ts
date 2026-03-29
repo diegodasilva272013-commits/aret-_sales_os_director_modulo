@@ -1,0 +1,158 @@
+import { createClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
+  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const url = new URL(request.url)
+  const fechaDesde = url.searchParams.get('desde') || new Date().toISOString().split('T')[0]
+  const fechaHasta = url.searchParams.get('hasta') || new Date().toISOString().split('T')[0]
+  const personaId = url.searchParams.get('persona')
+  const proyectoId = url.searchParams.get('proyecto_id')
+
+  // Fetch setters reports
+  let setterQuery = supabase
+    .from('reportes_setter')
+    .select('*, profiles!setter_id(nombre, activo)')
+    .gte('fecha', fechaDesde)
+    .lte('fecha', fechaHasta)
+
+  if (personaId) setterQuery = setterQuery.eq('setter_id', personaId)
+  if (proyectoId) setterQuery = setterQuery.eq('proyecto_id', proyectoId)
+
+  // Fetch closers reports
+  let closerQuery = supabase
+    .from('reportes_closer')
+    .select('*, profiles!closer_id(nombre, activo)')
+    .gte('fecha', fechaDesde)
+    .lte('fecha', fechaHasta)
+
+  if (personaId) closerQuery = closerQuery.eq('closer_id', personaId)
+  if (proyectoId) closerQuery = closerQuery.eq('proyecto_id', proyectoId)
+
+  const [{ data: setterReports }, { data: closerReports }, { data: allProfiles }] = await Promise.all([
+    setterQuery,
+    closerQuery,
+    supabase.from('profiles').select('*').eq('activo', true),
+  ])
+
+  const today = new Date().toISOString().split('T')[0]
+  const setters = (allProfiles || []).filter(p => p.rol === 'setter')
+  const closers = (allProfiles || []).filter(p => p.rol === 'closer')
+
+  const todaySetterReports = (setterReports || []).filter(r => r.fecha === today)
+  const todayCloserReports = (closerReports || []).filter(r => r.fecha === today)
+  const todaySetterIds = new Set(todaySetterReports.map(r => r.setter_id))
+  const todayCloserIds = new Set(todayCloserReports.map(r => r.closer_id))
+
+  // Reunion stats (today only)
+  const settersAsistieron = todaySetterReports.filter(r => r.asistio_reunion === true).length
+  const closersAsistieron = todayCloserReports.filter(r => r.asistio_reunion === true).length
+
+  // Aggregate stats
+  const totalLeads = (setterReports || []).reduce((s, r) => s + (r.leads_recibidos || 0), 0)
+  const totalCitas = (setterReports || []).reduce((s, r) => s + (r.citas_agendadas || 0), 0)
+  const totalShows = (closerReports || []).reduce((s, r) => s + (r.citas_show || 0), 0)
+  const totalVentas = (closerReports || []).reduce((s, r) => s + (r.ventas_cerradas || 0), 0)
+  const totalMontoCerrado = (closerReports || []).reduce((s, r) => s + (r.monto_total_cerrado || 0), 0)
+  const totalMontoCobrado = (closerReports || []).reduce((s, r) => s + (r.monto_cobrado || 0), 0)
+  const totalMontoPendiente = (closerReports || []).reduce((s, r) => s + (r.monto_pendiente || 0), 0)
+
+  // Setter table data
+  const setterTableMap = new Map<string, { nombre: string; [key: string]: unknown }>()
+  for (const r of (setterReports || [])) {
+    const id = r.setter_id
+    if (!setterTableMap.has(id)) {
+      setterTableMap.set(id, {
+        id,
+        nombre: (r.profiles as { nombre: string })?.nombre || 'N/A',
+        leads_recibidos: 0, intentos_contacto: 0, contactados: 0,
+        citas_agendadas: 0, citas_show: 0, citas_noshow: 0,
+        citas_calificadas: 0, citas_reprogramadas: 0,
+      })
+    }
+    const entry = setterTableMap.get(id)!
+    entry.leads_recibidos = (entry.leads_recibidos as number) + (r.leads_recibidos || 0)
+    entry.intentos_contacto = (entry.intentos_contacto as number) + (r.intentos_contacto || 0)
+    entry.contactados = (entry.contactados as number) + (r.contactados || 0)
+    entry.citas_agendadas = (entry.citas_agendadas as number) + (r.citas_agendadas || 0)
+    entry.citas_show = (entry.citas_show as number) + (r.citas_show || 0)
+    entry.citas_noshow = (entry.citas_noshow as number) + (r.citas_noshow || 0)
+    entry.citas_calificadas = (entry.citas_calificadas as number) + (r.citas_calificadas || 0)
+    entry.citas_reprogramadas = (entry.citas_reprogramadas as number) + (r.citas_reprogramadas || 0)
+  }
+
+  // Closer table data
+  const closerTableMap = new Map<string, { nombre: string; [key: string]: unknown }>()
+  for (const r of (closerReports || [])) {
+    const id = r.closer_id
+    if (!closerTableMap.has(id)) {
+      closerTableMap.set(id, {
+        id,
+        nombre: (r.profiles as { nombre: string })?.nombre || 'N/A',
+        citas_recibidas: 0, citas_show: 0, citas_noshow: 0,
+        ventas_cerradas: 0, ventas_no_cerradas: 0,
+        monto_total_cerrado: 0, monto_cobrado: 0, monto_pendiente: 0,
+        pagos_completos: 0, pagos_parciales: 0, pagos_nulo: 0,
+        motivo_precio: 0, motivo_consultar: 0, motivo_momento: 0,
+        motivo_competencia: 0, motivo_otro: 0,
+      })
+    }
+    const entry = closerTableMap.get(id)!
+    entry.citas_recibidas = (entry.citas_recibidas as number) + (r.citas_recibidas || 0)
+    entry.citas_show = (entry.citas_show as number) + (r.citas_show || 0)
+    entry.citas_noshow = (entry.citas_noshow as number) + (r.citas_noshow || 0)
+    entry.ventas_cerradas = (entry.ventas_cerradas as number) + (r.ventas_cerradas || 0)
+    entry.ventas_no_cerradas = (entry.ventas_no_cerradas as number) + (r.ventas_no_cerradas || 0)
+    entry.monto_total_cerrado = (entry.monto_total_cerrado as number) + (r.monto_total_cerrado || 0)
+    entry.monto_cobrado = (entry.monto_cobrado as number) + (r.monto_cobrado || 0)
+    entry.monto_pendiente = (entry.monto_pendiente as number) + (r.monto_pendiente || 0)
+    entry.pagos_completos = (entry.pagos_completos as number) + (r.pagos_completos || 0)
+    entry.pagos_parciales = (entry.pagos_parciales as number) + (r.pagos_parciales || 0)
+    entry.pagos_nulo = (entry.pagos_nulo as number) + (r.pagos_nulo || 0)
+    entry.motivo_precio = (entry.motivo_precio as number) + (r.motivo_precio || 0)
+    entry.motivo_consultar = (entry.motivo_consultar as number) + (r.motivo_consultar || 0)
+    entry.motivo_momento = (entry.motivo_momento as number) + (r.motivo_momento || 0)
+    entry.motivo_competencia = (entry.motivo_competencia as number) + (r.motivo_competencia || 0)
+    entry.motivo_otro = (entry.motivo_otro as number) + (r.motivo_otro || 0)
+  }
+
+  return NextResponse.json({
+    stats: {
+      totalLeads,
+      totalCitas,
+      totalShows,
+      totalVentas,
+      totalMontoCerrado,
+      totalMontoCobrado,
+      totalMontoPendiente,
+      tasaCierre: totalShows > 0 ? totalVentas / totalShows : 0,
+      tasaShow: totalCitas > 0 ? totalShows / totalCitas : 0,
+    },
+    setterTable: Array.from(setterTableMap.values()),
+    closerTable: Array.from(closerTableMap.values()),
+    setterReports: setterReports || [],
+    closerReports: closerReports || [],
+    reportesHoy: {
+      setters: setters.map(s => {
+        const rep = todaySetterReports.find(r => r.setter_id === s.id)
+        return { ...s, enviado: todaySetterIds.has(s.id), asistio_reunion: rep?.asistio_reunion ?? null }
+      }),
+      closers: closers.map(c => {
+        const rep = todayCloserReports.find(r => r.closer_id === c.id)
+        return { ...c, enviado: todayCloserIds.has(c.id), asistio_reunion: rep?.asistio_reunion ?? null }
+      }),
+    },
+    reunionStats: {
+      setters_asistieron: settersAsistieron,
+      setters_total: todaySetterReports.length,
+      closers_asistieron: closersAsistieron,
+      closers_total: todayCloserReports.length,
+    },
+  })
+}
