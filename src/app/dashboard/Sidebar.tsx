@@ -4,9 +4,9 @@ import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Receipt, Wallet, Users2, FileText,
+  LayoutDashboard, Receipt, Wallet, Users2,
   Award, ChevronDown, ChevronRight, Menu, X,
-  BarChart2, FolderOpen, UserCheck, Settings, Megaphone, Shield,
+  BarChart2, UserCheck,
   BookOpen, Handshake, Radio, ShieldCheck
 } from 'lucide-react'
 

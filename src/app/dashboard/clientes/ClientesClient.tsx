@@ -4,9 +4,9 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  Users2, Search, Plus, X, Edit2, Save, Trash2, ChevronDown, ChevronUp,
-  DollarSign, Calendar, UserCheck, Phone, FileText, Activity, Eye,
-  ArrowUpDown, Download
+  Users2, Search, Edit2, Save, Trash2, ChevronDown, ChevronUp,
+  DollarSign, Calendar, Activity, Eye,
+  Download
 } from 'lucide-react'
 
 const C = {

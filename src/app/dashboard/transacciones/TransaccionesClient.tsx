@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   Receipt, Search, ChevronDown, ChevronUp, Calendar,
-  Plus, X, DollarSign, TrendingUp, TrendingDown, RotateCcw,
+  Plus, DollarSign, TrendingUp, TrendingDown, RotateCcw,
   ArrowUpRight, ArrowDownLeft, Trash2, Filter, Download
 } from 'lucide-react'
 

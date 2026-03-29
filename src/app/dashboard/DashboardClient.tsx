@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { TrendingUp, Users, Bell, LogOut, DollarSign, BarChart2, AlertTriangle, GitFork, UserCheck, Award, ChevronRight, Activity, FolderOpen, PieChart as PieChartIcon, Receipt, Target, Percent, CreditCard } from 'lucide-react'
+import { TrendingUp, Users, Bell, LogOut, DollarSign, BarChart2, AlertTriangle, GitFork, UserCheck, Award, ChevronRight, Activity, PieChart as PieChartIcon, Receipt, Target, Percent, CreditCard } from 'lucide-react'
 import StatsCards from '@/components/dashboard/StatsCards'
 import SettersTable from '@/components/dashboard/SettersTable'
 import ClosersTable from '@/components/dashboard/ClosersTable'

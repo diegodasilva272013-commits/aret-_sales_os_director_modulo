@@ -6,8 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Plus, Users, AlertTriangle, CheckCircle2, Clock,
   ChevronDown, ChevronUp, X, DollarSign, Save, Edit2, Activity,
-  Wallet, TrendingUp, Shield, Search, RotateCcw, Trash2, Megaphone,
-  FileText, Calendar, Upload, Eye, Receipt, UserCheck, CreditCard
+  Wallet, Search, RotateCcw, Trash2, Megaphone,
+  UserCheck
 } from 'lucide-react'
 
 // ═══════════════════════════════════════════════════
@@ -105,7 +105,7 @@ export default function CarteraClient() {
   const router = useRouter()
   const [authReady, setAuthReady] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [, setError] = useState<string | null>(null)
   const [clientes, setClientes] = useState<ClienteCartera[]>([])
   const [filtro, setFiltro] = useState('')
   const [busqueda, setBusqueda] = useState('')
@@ -340,7 +340,7 @@ export default function CarteraClient() {
   const activeFiltersCount = [filterCloser, filterSetter, filterFuente, filterCanal].filter(Boolean).length
 
   function toggleSelect(id: string) {
-    setSelectedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+    setSelectedIds(prev => { const next = new Set(prev); if (next.has(id)) { next.delete(id) } else { next.add(id) } return next })
   }
   function toggleSelectAll() {
     if (selectedIds.size === filteredClientes.length) setSelectedIds(new Set())

@@ -4,9 +4,9 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  DollarSign, TrendingUp, TrendingDown, Users, Award, AlertTriangle,
+  DollarSign, TrendingUp, Users, Award, AlertTriangle,
   Receipt, Target, Wallet, PieChart as PieChartIcon, BarChart2,
-  Activity, ChevronRight, Download, RotateCcw, Megaphone, Shield,
+  Activity, Download, RotateCcw, Megaphone, Shield,
   Clock, CheckCircle, XCircle, Zap, Calendar, Edit3, Save, X, Plus,
   AlertCircle, Trophy, CreditCard
 } from 'lucide-react'

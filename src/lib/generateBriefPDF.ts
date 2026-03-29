@@ -52,19 +52,6 @@ interface Proyecto {
   empresa?: string
 }
 
-const BRAND = {
-  dark: '#080B14',
-  surface: '#0D1117',
-  accent: '#6366F1',
-  accentLight: '#818CF8',
-  green: '#34D399',
-  yellow: '#FBBF24',
-  text: '#F1F5F9',
-  muted: '#94A3B8',
-  subtle: '#64748B',
-  border: '#1a2234',
-}
-
 function splitLines(text?: string): string[] {
   if (!text) return []
   return text.split('\n').map(l => l.trim()).filter(Boolean)
@@ -180,18 +167,6 @@ export function generateBriefPDF(
     y += 2
   }
 
-  function labelValue(label: string, value: string) {
-    checkPage(7)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(100, 116, 139)
-    doc.text(label.toUpperCase(), margin, y)
-    doc.setFontSize(9.5)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(241, 245, 249)
-    doc.text(value, margin + 35, y)
-    y += 6
-  }
 
   // ── Description ──────────────────────────────────────────
   if (brief.descripcion_producto) {

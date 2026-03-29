@@ -259,13 +259,6 @@ export default function CloserWizard({ existingReport }: Props) {
     setData(prev => ({ ...prev, [field]: value }))
   }
 
-  function addSale() {
-    setData(prev => ({
-      ...prev,
-      detalle_ventas: [...prev.detalle_ventas, { cliente: '', monto: 0, cobrado: 0, pendiente: 0, medio_pago: 'transferencia' }]
-    }))
-  }
-
   function updateSale(index: number, field: keyof SaleDetail, value: string | number) {
     setData(prev => {
       const updated = [...prev.detalle_ventas]
@@ -277,13 +270,6 @@ export default function CloserWizard({ existingReport }: Props) {
       }
       return { ...prev, detalle_ventas: updated }
     })
-  }
-
-  function removeSale(index: number) {
-    setData(prev => ({
-      ...prev,
-      detalle_ventas: prev.detalle_ventas.filter((_, i) => i !== index)
-    }))
   }
 
   function handleNext() {
