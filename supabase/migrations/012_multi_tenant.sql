@@ -14,7 +14,6 @@ CREATE INDEX IF NOT EXISTS idx_proyectos_director ON proyectos(director_id);
 
 -- 3. metas_mes: metas por director
 ALTER TABLE metas_mes ADD COLUMN IF NOT EXISTS director_id uuid REFERENCES profiles(id);
-DROP INDEX IF EXISTS metas_mes_mes_key;
 ALTER TABLE metas_mes DROP CONSTRAINT IF EXISTS metas_mes_mes_key;
 ALTER TABLE metas_mes ADD CONSTRAINT metas_mes_director_mes_key UNIQUE (director_id, mes);
 

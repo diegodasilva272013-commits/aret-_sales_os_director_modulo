@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Mail, Lock, AlertCircle } from 'lucide-react'
 
@@ -120,8 +121,11 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="text-center text-xs text-gray-600 mt-6">
-            Acceso restringido a miembros del equipo
+          <p className="text-center text-sm text-gray-500 mt-6">
+            ¿No tenés cuenta?{' '}
+            <Link href="/registro" className="text-indigo-400 hover:text-indigo-300 transition-colors">
+              Registrate como Director
+            </Link>
           </p>
         </div>
       </div>
