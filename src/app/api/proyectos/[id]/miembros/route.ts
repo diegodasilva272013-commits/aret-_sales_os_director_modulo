@@ -1,10 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // Verify project belongs to this director
+  const { data: proyecto } = await supabase.from('proyectos').select('id').eq('id', params.id).eq('director_id', scope.directorId).single()
+  if (!proyecto) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await supabase
     .from('proyecto_miembros')
@@ -17,14 +22,18 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Verify project belongs to this director
+  const { data: proyecto } = await supabase.from('proyectos').select('id').eq('id', params.id).eq('director_id', scope.directorId).single()
+  if (!proyecto) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const { user_id, rol } = body
+
+  // Verify the user being added belongs to this director's team
+  if (!scope.teamIds.includes(user_id)) return NextResponse.json({ error: 'El usuario no pertenece a tu equipo' }, { status: 403 })
 
   const { data, error } = await supabase
     .from('proyecto_miembros')
@@ -38,11 +47,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Verify project belongs to this director
+  const { data: proyecto } = await supabase.from('proyectos').select('id').eq('id', params.id).eq('director_id', scope.directorId).single()
+  if (!proyecto) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const url = new URL(request.url)
   const memberId = url.searchParams.get('member_id')

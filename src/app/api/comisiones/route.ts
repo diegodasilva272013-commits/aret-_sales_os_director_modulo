@@ -1,23 +1,22 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
   try {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const desde = searchParams.get('desde') || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
   const hasta = searchParams.get('hasta') || new Date().toISOString().split('T')[0]
 
-  // Fetch all team members (setters and closers)
+  // Fetch team members scoped to this director
   const { data: teamProfiles } = await supabase
     .from('profiles')
     .select('id, nombre, apellido, foto_url, rol, activo')
+    .eq('director_id', scope.directorId)
     .in('rol', ['setter', 'closer'])
     .order('nombre')
 
@@ -44,17 +43,18 @@ export async function GET(request: NextRequest) {
     .gte('fecha', desde)
     .lte('fecha', hasta)
 
-  // Fetch commission configs per project
-  const { data: comisionConfigs } = await supabase
-    .from('comisiones_proyecto')
-    .select('*')
-
-  // Fetch project names
+  // Fetch commission configs per project (director's projects only)
   const { data: proyectos } = await supabase
     .from('proyectos')
     .select('id, nombre')
+    .eq('director_id', scope.directorId)
 
+  const proyectoIds = (proyectos || []).map(p => p.id)
   const proyectoMap = Object.fromEntries((proyectos || []).map(p => [p.id, p.nombre]))
+
+  const { data: comisionConfigs } = proyectoIds.length > 0
+    ? await supabase.from('comisiones_proyecto').select('*').in('proyecto_id', proyectoIds)
+    : { data: [] }
 
   // Build commission config map by project
   const configMap = Object.fromEntries(

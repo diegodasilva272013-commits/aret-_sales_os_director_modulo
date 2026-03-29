@@ -1,14 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET: Listar transacciones con filtros
 export async function GET(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const desde = searchParams.get('desde')
@@ -19,6 +17,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from('transacciones')
     .select('*')
+    .eq('director_id', scope.directorId)
     .order('fecha', { ascending: false })
     .limit(limit)
 
@@ -70,11 +69,8 @@ export async function GET(request: NextRequest) {
 // POST: Crear transacción manual (egreso, o ingreso no vinculado a cuota)
 export async function POST(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const { cliente_id, monto, tipo, descripcion } = body
@@ -94,6 +90,7 @@ export async function POST(request: NextRequest) {
       monto: Number(monto),
       tipo,
       descripcion: descripcion || null,
+      director_id: scope.directorId,
     })
     .select()
     .single()
@@ -105,17 +102,14 @@ export async function POST(request: NextRequest) {
 // DELETE: Eliminar transacción
 export async function DELETE(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 })
 
-  const { error } = await supabase.from('transacciones').delete().eq('id', id)
+  const { error } = await supabase.from('transacciones').delete().eq('id', id).eq('director_id', scope.directorId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ deleted: true })
 }

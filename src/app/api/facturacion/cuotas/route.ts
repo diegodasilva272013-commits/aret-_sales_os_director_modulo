@@ -1,15 +1,20 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET: Listar cuotas de un cliente
 export async function GET(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const clienteId = searchParams.get('cliente_id')
   if (!clienteId) return NextResponse.json({ error: 'cliente_id requerido' }, { status: 400 })
+
+  // Verify client belongs to this director
+  const { data: cliente } = await supabase.from('clientes_cartera').select('id').eq('id', clienteId).eq('director_id', scope.directorId).single()
+  if (!cliente) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
   // Auto-marcar cuotas vencidas antes de devolver
   const hoy = new Date().toISOString().split('T')[0]
@@ -33,11 +38,8 @@ export async function GET(request: NextRequest) {
 // POST: Agregar cuota, pagar (total o parcial), reembolsar, editar
 export async function POST(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const { action } = body
@@ -123,6 +125,7 @@ export async function POST(request: NextRequest) {
         descripcion: esPagoTotal
           ? `Cuota #${cuota.numero_cuota} pagada completa`
           : `Pago parcial cuota #${cuota.numero_cuota} ($${montoPagar.toLocaleString()} de $${montoCuota.toLocaleString()})`,
+        director_id: scope.directorId,
       })
       .select()
       .single()
@@ -147,6 +150,7 @@ export async function POST(request: NextRequest) {
           .select('tramos')
           .eq('rol', 'closer')
           .eq('activa', true)
+          .eq('director_id', scope.directorId)
           .limit(1)
           .single()
 
@@ -174,6 +178,7 @@ export async function POST(request: NextRequest) {
           .select('tramos')
           .eq('rol', 'setter')
           .eq('activa', true)
+          .eq('director_id', scope.directorId)
           .limit(1)
           .single()
 
@@ -279,6 +284,7 @@ export async function POST(request: NextRequest) {
         monto: montoReembolso,
         tipo: 'reembolso',
         descripcion: motivo ? `Reembolso cuota #${cuota.numero_cuota}: ${motivo}` : `Reembolso cuota #${cuota.numero_cuota}`,
+        director_id: scope.directorId,
       })
 
     if (txError) return NextResponse.json({ error: txError.message }, { status: 500 })
@@ -295,7 +301,7 @@ export async function POST(request: NextRequest) {
       tabla: 'cuotas', registro_id: cuota_id, accion: 'UPDATE',
       datos_anteriores: { estado: cuota.estado, monto_pagado: cuota.monto_pagado },
       datos_nuevos: { estado: 'pendiente', monto_pagado: 0, razon: 'reembolso' },
-      usuario_id: user.id,
+      usuario_id: scope.directorId,
     })
 
     // Re-activar cliente si estaba pagado
@@ -362,7 +368,7 @@ export async function POST(request: NextRequest) {
         tabla: 'cuotas', registro_id: cuota_id, accion: 'UPDATE',
         datos_anteriores: { monto: montoAnterior },
         datos_nuevos: { monto: montoNuevo, delta },
-        usuario_id: user.id,
+        usuario_id: scope.directorId,
       })
     }
 
@@ -375,11 +381,8 @@ export async function POST(request: NextRequest) {
 // DELETE: Eliminar cuota
 export async function DELETE(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const cuotaId = searchParams.get('id')

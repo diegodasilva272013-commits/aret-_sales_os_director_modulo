@@ -1,14 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET: Listar liquidaciones
 export async function GET(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const usuarioId = searchParams.get('usuario_id')
@@ -18,7 +16,13 @@ export async function GET(request: NextRequest) {
     .select('*')
     .order('generado_en', { ascending: false })
 
-  if (usuarioId) query = query.eq('usuario_id', usuarioId)
+  if (usuarioId) {
+    // Verify this user belongs to director's team
+    if (!scope.teamIds.includes(usuarioId)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    query = query.eq('usuario_id', usuarioId)
+  } else {
+    query = query.in('usuario_id', scope.teamIds)
+  }
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -51,11 +55,8 @@ export async function GET(request: NextRequest) {
 // Usa comisiones_pendientes (disponibles) + ajustes_comision pendientes
 export async function POST(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const { usuario_id, fecha_desde, fecha_hasta } = body
@@ -64,7 +65,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'usuario_id, fecha_desde y fecha_hasta son requeridos' }, { status: 400 })
   }
 
-  // Fetch user
+  // Fetch user (must be in director's team)
+  if (!scope.teamIds.includes(usuario_id)) return NextResponse.json({ error: 'Usuario no es parte de tu equipo' }, { status: 403 })
+
   const { data: usuario } = await supabase
     .from('profiles')
     .select('id, nombre, apellido, rol')
@@ -98,6 +101,7 @@ export async function POST(request: NextRequest) {
     .select('*')
     .eq('rol', usuario.rol)
     .eq('activa', true)
+    .eq('director_id', scope.directorId)
     .limit(1)
     .maybeSingle()
 
@@ -113,6 +117,7 @@ export async function POST(request: NextRequest) {
   const { data: clientes } = await supabase
     .from('clientes_cartera')
     .select('id, nombre_cliente, closer_id, setter_id')
+    .eq('director_id', scope.directorId)
 
   const clienteMap = Object.fromEntries((clientes || []).map(c => [c.id, c]))
   const roleField = usuario.rol === 'closer' ? 'closer_id' : usuario.rol === 'setter' ? 'setter_id' : null
@@ -200,7 +205,7 @@ export async function POST(request: NextRequest) {
   await supabase.from('audit_log').insert({
     tabla: 'liquidaciones', registro_id: liquidacion.id, accion: 'INSERT',
     datos_nuevos: { total_comision: comisionNeta, comisiones_count: comisionIds.length, ajustes_count: ajusteIds.length },
-    usuario_id: user.id,
+    usuario_id: scope.directorId,
   })
 
   return NextResponse.json({
@@ -217,11 +222,8 @@ export async function POST(request: NextRequest) {
 // PUT: Marcar liquidación como pagada/pendiente
 export async function PUT(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const { id, estado } = body
@@ -229,6 +231,10 @@ export async function PUT(request: NextRequest) {
   if (!id || !estado || !['pendiente', 'pagada'].includes(estado)) {
     return NextResponse.json({ error: 'id y estado (pendiente|pagada) requeridos' }, { status: 400 })
   }
+
+  // Verify liquidacion belongs to a team member
+  const { data: liq } = await supabase.from('liquidaciones').select('usuario_id').eq('id', id).single()
+  if (!liq || !scope.teamIds.includes(liq.usuario_id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await supabase
     .from('liquidaciones')
@@ -244,15 +250,16 @@ export async function PUT(request: NextRequest) {
 // DELETE: Eliminar liquidación
 export async function DELETE(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 })
+
+  // Verify liquidacion belongs to a team member
+  const { data: liq } = await supabase.from('liquidaciones').select('usuario_id').eq('id', id).single()
+  if (!liq || !scope.teamIds.includes(liq.usuario_id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { error } = await supabase.from('liquidaciones').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

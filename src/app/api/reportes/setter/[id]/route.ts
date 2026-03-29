@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function PATCH(
@@ -6,14 +7,14 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Verify the report belongs to a team member
+  const { data: report } = await supabase.from('reportes_setter').select('setter_id').eq('id', params.id).single()
+  if (!report || !scope.teamIds.includes(report.setter_id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
-  // Remove fields that shouldn't be editable
   delete body.id
   delete body.setter_id
   delete body.fecha
@@ -35,11 +36,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await supabase
     .from('reportes_setter')
@@ -48,5 +46,9 @@ export async function GET(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Verify the report belongs to a team member
+  if (!scope.teamIds.includes(data.setter_id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   return NextResponse.json({ report: data })
 }

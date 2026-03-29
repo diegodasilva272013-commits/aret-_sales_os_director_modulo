@@ -1,14 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
   try {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const mesParam = searchParams.get('mes')
@@ -33,19 +31,24 @@ export async function GET(request: NextRequest) {
   // Liberar comisiones diferidas cuyo plazo de 7 días ya pasó
   await supabase.rpc('liberar_comisiones_disponibles')
 
-  // Auto-marcar clientes con cuotas vencidas
+  // Auto-marcar clientes con cuotas vencidas (only this director's clients)
   const { data: clientesConVencidas } = await supabase
     .from('cuotas')
     .select('cliente_id')
     .eq('estado', 'vencida')
 
   if (clientesConVencidas && clientesConVencidas.length > 0) {
-    const idsVencidos = Array.from(new Set(clientesConVencidas.map(c => c.cliente_id)))
-    await supabase
-      .from('clientes_cartera')
-      .update({ estado: 'vencido' })
-      .eq('estado', 'activo')
-      .in('id', idsVencidos)
+    // Get this director's client IDs first
+    const { data: misClientes } = await supabase.from('clientes_cartera').select('id').eq('director_id', scope.directorId)
+    const misClienteIds = (misClientes || []).map(c => c.id)
+    const idsVencidos = Array.from(new Set(clientesConVencidas.map(c => c.cliente_id).filter(id => misClienteIds.includes(id))))
+    if (idsVencidos.length > 0) {
+      await supabase
+        .from('clientes_cartera')
+        .update({ estado: 'vencido' })
+        .eq('estado', 'activo')
+        .in('id', idsVencidos)
+    }
   }
 
   // ─── Parallel fetches ───
@@ -60,18 +63,25 @@ export async function GET(request: NextRequest) {
     { data: clientesCartera },
     { data: allMetas },
   ] = await Promise.all([
-    supabase.from('metas_mes').select('*').eq('mes', mes).single(),
-    supabase.from('transacciones').select('id, cliente_id, cuota_id, monto, tipo, fecha, descripcion').gte('fecha', mesStart).lte('fecha', mesEnd + 'T23:59:59').order('fecha', { ascending: false }),
-    supabase.from('cuotas').select('monto').eq('estado', 'pendiente'),
-    supabase.from('cuotas').select('monto').eq('estado', 'vencida'),
-    supabase.from('cuotas').select('monto, fecha_pago').eq('estado', 'pagada').gte('fecha_pago', mesStart).lte('fecha_pago', mesEnd),
-    supabase.from('profiles').select('id, nombre, apellido, foto_url').eq('rol', 'closer').eq('activo', true),
-    supabase.from('profiles').select('id, nombre, apellido, foto_url').eq('rol', 'setter').eq('activo', true),
-    supabase.from('clientes_cartera').select('id, nombre_cliente, closer_id, setter_id, monto_referencia, estado, creado_en, fuente, campana, canal'),
-    supabase.from('metas_mes').select('mes, meta_objetivo, facturacion_alcanzada').order('mes', { ascending: true }).limit(12),
+    supabase.from('metas_mes').select('*').eq('mes', mes).eq('director_id', scope.directorId).single(),
+    supabase.from('transacciones').select('id, cliente_id, cuota_id, monto, tipo, fecha, descripcion').eq('director_id', scope.directorId).gte('fecha', mesStart).lte('fecha', mesEnd + 'T23:59:59').order('fecha', { ascending: false }),
+    supabase.from('cuotas').select('monto, cliente_id').eq('estado', 'pendiente'),
+    supabase.from('cuotas').select('monto, cliente_id').eq('estado', 'vencida'),
+    supabase.from('cuotas').select('monto, fecha_pago, cliente_id').eq('estado', 'pagada').gte('fecha_pago', mesStart).lte('fecha_pago', mesEnd),
+    supabase.from('profiles').select('id, nombre, apellido, foto_url').eq('rol', 'closer').eq('activo', true).eq('director_id', scope.directorId),
+    supabase.from('profiles').select('id, nombre, apellido, foto_url').eq('rol', 'setter').eq('activo', true).eq('director_id', scope.directorId),
+    supabase.from('clientes_cartera').select('id, nombre_cliente, closer_id, setter_id, monto_referencia, estado, creado_en, fuente, campana, canal').eq('director_id', scope.directorId),
+    supabase.from('metas_mes').select('mes, meta_objetivo, facturacion_alcanzada').eq('director_id', scope.directorId).order('mes', { ascending: true }).limit(12),
   ])
 
   // ─── Comisiones diferidas (stats) ───
+  const directorClienteIds = (clientesCartera || []).map(c => c.id)
+
+  // Filter cuotas to only this director's clients
+  const myPend = (cuotasPend || []).filter(c => directorClienteIds.includes(c.cliente_id))
+  const myVenc = (cuotasVenc || []).filter(c => directorClienteIds.includes(c.cliente_id))
+  const myPagadas = (cuotasPagadas || []).filter(c => directorClienteIds.includes(c.cliente_id))
+
   const [
     { data: comPendientes },
     { data: comDisponibles },
@@ -80,12 +90,12 @@ export async function GET(request: NextRequest) {
     { data: cuotasPesada },
     { data: cuotasDefault },
   ] = await Promise.all([
-    supabase.from('comisiones_pendientes').select('monto_comision').eq('estado', 'pendiente'),
-    supabase.from('comisiones_pendientes').select('monto_comision').eq('estado', 'disponible'),
-    supabase.from('comisiones_pendientes').select('monto_comision').eq('estado', 'revertida').gte('revertida_en', mesStart).lte('revertida_en', mesEnd + 'T23:59:59'),
-    supabase.from('cuotas').select('monto').eq('estado', 'vencida').eq('categoria_vencimiento', 'ligera'),
-    supabase.from('cuotas').select('monto').eq('estado', 'vencida').eq('categoria_vencimiento', 'pesada'),
-    supabase.from('cuotas').select('monto').eq('estado', 'vencida').eq('categoria_vencimiento', 'default'),
+    supabase.from('comisiones_pendientes').select('monto_comision').eq('estado', 'pendiente').in('usuario_id', scope.teamIds),
+    supabase.from('comisiones_pendientes').select('monto_comision').eq('estado', 'disponible').in('usuario_id', scope.teamIds),
+    supabase.from('comisiones_pendientes').select('monto_comision').eq('estado', 'revertida').in('usuario_id', scope.teamIds).gte('revertida_en', mesStart).lte('revertida_en', mesEnd + 'T23:59:59'),
+    supabase.from('cuotas').select('monto, cliente_id').eq('estado', 'vencida').eq('categoria_vencimiento', 'ligera'),
+    supabase.from('cuotas').select('monto, cliente_id').eq('estado', 'vencida').eq('categoria_vencimiento', 'pesada'),
+    supabase.from('cuotas').select('monto, cliente_id').eq('estado', 'vencida').eq('categoria_vencimiento', 'default'),
   ])
 
   const comisionesDiferidas = {
@@ -95,9 +105,9 @@ export async function GET(request: NextRequest) {
   }
 
   const carteraVencidaCategoria = {
-    ligera: (cuotasLigera || []).reduce((s, c) => s + Number(c.monto), 0),
-    pesada: (cuotasPesada || []).reduce((s, c) => s + Number(c.monto), 0),
-    default_cobranza: (cuotasDefault || []).reduce((s, c) => s + Number(c.monto), 0),
+    ligera: (cuotasLigera || []).filter(c => directorClienteIds.includes(c.cliente_id)).reduce((s, c) => s + Number(c.monto), 0),
+    pesada: (cuotasPesada || []).filter(c => directorClienteIds.includes(c.cliente_id)).reduce((s, c) => s + Number(c.monto), 0),
+    default_cobranza: (cuotasDefault || []).filter(c => directorClienteIds.includes(c.cliente_id)).reduce((s, c) => s + Number(c.monto), 0),
   }
 
   const transacciones = allTx || []
@@ -116,10 +126,10 @@ export async function GET(request: NextRequest) {
   const porcentaje = metaObjetivo > 0 ? (facturacionAlcanzada / metaObjetivo) * 100 : 0
 
   // ─── Cartera ───
-  const carteraTotal = (cuotasPend || []).reduce((s, c) => s + Number(c.monto), 0)
-    + (cuotasVenc || []).reduce((s, c) => s + Number(c.monto), 0)
-  const carteraVencida = (cuotasVenc || []).reduce((s, c) => s + Number(c.monto), 0)
-  const carteraCobrada = (cuotasPagadas || []).reduce((s, c) => s + Number(c.monto), 0)
+  const carteraTotal = myPend.reduce((s, c) => s + Number(c.monto), 0)
+    + myVenc.reduce((s, c) => s + Number(c.monto), 0)
+  const carteraVencida = myVenc.reduce((s, c) => s + Number(c.monto), 0)
+  const carteraCobrada = myPagadas.reduce((s, c) => s + Number(c.monto), 0)
   const totalClientes = clientes.length
   const clientesActivos = clientes.filter(c => c.estado === 'activo').length
   const clientesVencidos = clientes.filter(c => c.estado === 'vencido').length

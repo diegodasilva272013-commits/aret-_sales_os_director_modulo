@@ -1,10 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // Verify team member belongs to this director
+  if (!scope.teamIds.includes(params.id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await supabase
     .from('metodos_pago')
@@ -18,11 +22,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { data: requester } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (requester?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!scope.teamIds.includes(params.id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const { tipo, datos, titular, principal } = body
@@ -39,14 +42,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { data: requester } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (requester?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!scope.teamIds.includes(params.id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { pago_id } = await request.json()
-  // Ensure the pago belongs to this user
   const { error } = await supabase.from('metodos_pago').delete().eq('id', pago_id).eq('user_id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })

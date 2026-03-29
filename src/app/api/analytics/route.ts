@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 function getWeekKey(fecha: string): string {
@@ -18,8 +19,8 @@ function getMonthKey(fecha: string): string {
 
 export async function GET(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const desde = searchParams.get('desde') || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
   let setterQuery = supabase
     .from('reportes_setter')
     .select('*, profiles!setter_id(nombre)')
+    .in('setter_id', scope.teamIds)
     .gte('fecha', desde)
     .lte('fecha', hasta)
 
@@ -46,6 +48,7 @@ export async function GET(request: NextRequest) {
     let fallbackQuery = supabase
       .from('reportes_setter')
       .select('*')
+      .in('setter_id', scope.teamIds)
       .gte('fecha', desde)
       .lte('fecha', hasta)
     if (proyectoId) fallbackQuery = fallbackQuery.eq('proyecto_id', proyectoId)
@@ -59,6 +62,7 @@ export async function GET(request: NextRequest) {
   let closerQuery = supabase
     .from('reportes_closer')
     .select('*, profiles!closer_id(nombre)')
+    .in('closer_id', scope.teamIds)
     .gte('fecha', desde)
     .lte('fecha', hasta)
 
@@ -73,6 +77,7 @@ export async function GET(request: NextRequest) {
     let fallbackQuery = supabase
       .from('reportes_closer')
       .select('*')
+      .in('closer_id', scope.teamIds)
       .gte('fecha', desde)
       .lte('fecha', hasta)
     if (proyectoId) fallbackQuery = fallbackQuery.eq('proyecto_id', proyectoId)

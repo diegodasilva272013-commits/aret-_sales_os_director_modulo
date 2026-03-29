@@ -1,13 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const url = new URL(request.url)
   const fechaDesde = url.searchParams.get('desde') || new Date().toISOString().split('T')[0]
@@ -15,20 +13,22 @@ export async function GET(request: NextRequest) {
   const personaId = url.searchParams.get('persona')
   const proyectoId = url.searchParams.get('proyecto_id')
 
-  // Fetch setters reports
+  // Fetch setters reports — scoped to director's team
   let setterQuery = supabase
     .from('reportes_setter')
     .select('*, profiles!setter_id(nombre, activo)')
+    .in('setter_id', scope.teamIds)
     .gte('fecha', fechaDesde)
     .lte('fecha', fechaHasta)
 
   if (personaId) setterQuery = setterQuery.eq('setter_id', personaId)
   if (proyectoId) setterQuery = setterQuery.eq('proyecto_id', proyectoId)
 
-  // Fetch closers reports
+  // Fetch closers reports — scoped to director's team
   let closerQuery = supabase
     .from('reportes_closer')
     .select('*, profiles!closer_id(nombre, activo)')
+    .in('closer_id', scope.teamIds)
     .gte('fecha', fechaDesde)
     .lte('fecha', fechaHasta)
 
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   const [{ data: setterReports }, { data: closerReports }, { data: allProfiles }] = await Promise.all([
     setterQuery,
     closerQuery,
-    supabase.from('profiles').select('*').eq('activo', true),
+    supabase.from('profiles').select('*').eq('activo', true).eq('director_id', scope.directorId),
   ])
 
   const today = new Date().toISOString().split('T')[0]

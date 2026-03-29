@@ -1,15 +1,18 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  // Only allow viewing own team members
   const { data: profile, error } = await supabase
     .from('profiles')
     .select('id, nombre, telefono, foto_url, rol, activo, horario_inicio, horario_fin, dias_trabajo, notas, created_at')
     .eq('id', params.id)
+    .eq('director_id', scope.directorId)
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -33,19 +36,18 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: requester } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (requester?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const { nombre, apellido, telefono, rol, notas, foto_url, horario_inicio, horario_fin, dias_trabajo, proyectos_ids } = body
 
+  // Only allow editing own team members
   const { error } = await supabase
     .from('profiles')
     .update({ nombre, apellido, telefono, rol, notas, foto_url, horario_inicio, horario_fin, dias_trabajo })
     .eq('id', params.id)
+    .eq('director_id', scope.directorId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

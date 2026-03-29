@@ -1,14 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET: Listar clientes de cartera con resumen de cuotas
 export async function GET(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const filtroEstado = searchParams.get('estado') // activo | vencido | pagado | null (todos)
@@ -16,6 +14,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from('clientes_cartera')
     .select('*')
+    .eq('director_id', scope.directorId)
     .order('creado_en', { ascending: false })
 
   if (filtroEstado) query = query.eq('estado', filtroEstado)
@@ -60,11 +59,8 @@ export async function GET(request: NextRequest) {
 // POST: Crear nuevo cliente en cartera + cuotas automáticas
 export async function POST(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const { nombre_cliente, documento, closer_id, setter_id, monto_referencia, notas, cuotas, fuente, campana, canal } = body
@@ -86,6 +82,7 @@ export async function POST(request: NextRequest) {
       fuente: fuente || null,
       campana: campana || null,
       canal: canal || null,
+      director_id: scope.directorId,
     })
     .select()
     .single()
@@ -111,11 +108,8 @@ export async function POST(request: NextRequest) {
 // PUT: Actualizar cliente
 export async function PUT(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const { id, nombre_cliente, documento, closer_id, setter_id, monto_referencia, notas, estado, fuente, campana, canal } = body
@@ -187,7 +181,7 @@ export async function PUT(request: NextRequest) {
         notas: body.notas_reasignacion || null,
         cuotas_reasignadas: cuotasFuturasCount,
         cuotas_en_garantia: cuotasGarantiaCount,
-        creado_por: user.id,
+        creado_por: scope.directorId,
       })
 
       // Reasignar comisiones pendientes de cuotas FUTURAS al nuevo usuario
@@ -210,17 +204,14 @@ export async function PUT(request: NextRequest) {
 // DELETE: Eliminar cliente y sus cuotas (cascade)
 export async function DELETE(request: NextRequest) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).single()
-  if (profile?.rol !== 'director') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 })
 
-  const { error } = await supabase.from('clientes_cartera').delete().eq('id', id)
+  const { error } = await supabase.from('clientes_cartera').delete().eq('id', id).eq('director_id', scope.directorId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ deleted: true })
 }

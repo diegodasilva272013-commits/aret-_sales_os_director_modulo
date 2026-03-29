@@ -1,42 +1,21 @@
 import { createClient } from '@/lib/supabase/server'
+import { getDirectorScope } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
-async function checkAccess(proyectoId: string): Promise<{ allowed: boolean; userId?: string; rol?: string }> {
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { allowed: false }
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  // Check profile role
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('rol')
-    .eq('id', user.id)
+  // Verify project belongs to this director
+  const { data: proyecto } = await supabase
+    .from('proyectos')
+    .select('id, nombre, tipo, empresa')
+    .eq('id', params.id)
+    .eq('director_id', scope.directorId)
     .single()
 
-  if (!profile) return { allowed: false }
-
-  // Directors have full access
-  if (profile.rol === 'director') return { allowed: true, userId: user.id, rol: profile.rol }
-
-  // Other users: must be a project member
-  const { data: membership } = await supabase
-    .from('proyecto_miembros')
-    .select('id')
-    .eq('proyecto_id', proyectoId)
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (!membership) return { allowed: false }
-  return { allowed: true, userId: user.id, rol: profile.rol }
-}
-
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const access = await checkAccess(params.id)
-  if (!access.allowed) {
-    return NextResponse.json({ error: 'No tienes acceso a este brief' }, { status: 403 })
-  }
-
-  const supabase = createClient()
+  if (!proyecto) return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 })
 
   const { data, error } = await supabase
     .from('project_briefs')
@@ -48,14 +27,6 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Fetch project info
-  const { data: proyecto } = await supabase
-    .from('proyectos')
-    .select('id, nombre, tipo, empresa')
-    .eq('id', params.id)
-    .single()
-
-  // Fetch comisiones
   const { data: comisiones } = await supabase
     .from('comisiones_proyecto')
     .select('*')
@@ -66,17 +37,14 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  const access = await checkAccess(params.id)
-  if (!access.allowed) {
-    return NextResponse.json({ error: 'No tienes acceso a este brief' }, { status: 403 })
-  }
-
-  // Only directors can edit briefs
-  if (access.rol !== 'director') {
-    return NextResponse.json({ error: 'Solo el director puede editar el brief' }, { status: 403 })
-  }
-
   const supabase = createClient()
+  const scope = await getDirectorScope(supabase)
+  if (!scope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // Verify project belongs to this director
+  const { data: proyecto } = await supabase.from('proyectos').select('id').eq('id', params.id).eq('director_id', scope.directorId).single()
+  if (!proyecto) return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 })
+
   const body = await request.json()
 
   const { data, error } = await supabase
