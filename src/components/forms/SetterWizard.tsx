@@ -80,12 +80,15 @@ function ReunionStep({
   nota,
   onValue,
   onNota,
+  onNoMeeting,
 }: {
   value: boolean | null
   nota: string
   onValue: (v: boolean) => void
   onNota: (v: string) => void
+  onNoMeeting: () => void
 }) {
+  const isNoMeeting = value === null && nota === 'sin_reunion'
   return (
     <div className="mt-6 space-y-4">
       <div className="grid grid-cols-2 gap-4">
@@ -114,6 +117,18 @@ function ReunionStep({
           ❌ No
         </button>
       </div>
+      <button
+        type="button"
+        onClick={onNoMeeting}
+        className="w-full py-4 rounded-2xl font-bold text-base transition-all"
+        style={{
+          background: isNoMeeting ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.04)',
+          border: `2px solid ${isNoMeeting ? '#6366F1' : 'rgba(99,102,241,0.15)'}`,
+          color: isNoMeeting ? '#818CF8' : '#475569',
+        }}
+      >
+        📅 Hoy no había reunión
+      </button>
       {value === false && (
         <div>
           <label className="text-sm text-gray-400 mb-2 block">¿Por qué no pudiste asistir?</label>
@@ -240,7 +255,7 @@ export default function SetterWizard({ existingReport }: Props) {
       setter_id: userId,
       fecha: new Date().toISOString().split('T')[0],
       ...data,
-      asistio_reunion: data.asistio_reunion ?? false,
+      asistio_reunion: data.nota_reunion === 'sin_reunion' ? null : (data.asistio_reunion ?? false),
       ...(proyectoId ? { proyecto_id: proyectoId } : {}),
     }, { onConflict: 'setter_id,fecha' })
 
@@ -315,8 +330,9 @@ export default function SetterWizard({ existingReport }: Props) {
           <ReunionStep
             value={data.asistio_reunion}
             nota={data.nota_reunion}
-            onValue={v => updateField('asistio_reunion', v)}
+            onValue={v => { updateField('asistio_reunion', v); if (v !== false) updateField('nota_reunion', '') }}
             onNota={v => updateField('nota_reunion', v)}
+            onNoMeeting={() => { updateField('asistio_reunion', null); updateField('nota_reunion', 'sin_reunion') }}
           />
         </StepContent>
       case 9:
@@ -344,7 +360,7 @@ export default function SetterWizard({ existingReport }: Props) {
               { label: 'Citas no show', value: data.citas_noshow },
               { label: 'Citas reprogramadas', value: data.citas_reprogramadas },
               { label: 'Citas calificadas', value: data.citas_calificadas },
-              { label: 'Asistió reunión', value: data.asistio_reunion === null ? 'No reportado' : data.asistio_reunion ? 'Sí' : 'No' },
+              { label: 'Reunión', value: data.nota_reunion === 'sin_reunion' ? 'No había reunión' : data.asistio_reunion === null ? 'No reportado' : data.asistio_reunion ? 'Sí' : 'No' },
             ].map(item => (
               <div key={item.label} className="flex justify-between items-center bg-[#111827] border border-gray-800 rounded-xl px-4 py-3">
                 <span className="text-gray-400 text-sm">{item.label}</span>
@@ -417,8 +433,9 @@ export default function SetterWizard({ existingReport }: Props) {
           <ReunionStep
             value={data.asistio_reunion}
             nota={data.nota_reunion}
-            onValue={v => updateField('asistio_reunion', v)}
+            onValue={v => { updateField('asistio_reunion', v); if (v !== false) updateField('nota_reunion', '') }}
             onNota={v => updateField('nota_reunion', v)}
+            onNoMeeting={() => { updateField('asistio_reunion', null); updateField('nota_reunion', 'sin_reunion') }}
           />
         </StepContent>
       case 6:
@@ -444,7 +461,7 @@ export default function SetterWizard({ existingReport }: Props) {
               { label: 'Leads calificados (chat)', value: data.leads_calificados_chat },
               { label: 'Llamadas agendadas (DM)', value: data.llamadas_agendadas_dm },
               { label: 'Show / No Show', value: `${data.citas_show} / ${data.citas_noshow}` },
-              { label: 'Asistió reunión', value: data.asistio_reunion === null ? 'No reportado' : data.asistio_reunion ? 'Sí' : 'No' },
+              { label: 'Reunión', value: data.nota_reunion === 'sin_reunion' ? 'No había reunión' : data.asistio_reunion === null ? 'No reportado' : data.asistio_reunion ? 'Sí' : 'No' },
             ].map(item => (
               <div key={item.label} className="flex justify-between items-center bg-[#111827] border border-gray-800 rounded-xl px-4 py-3">
                 <span className="text-gray-400 text-sm">{item.label}</span>

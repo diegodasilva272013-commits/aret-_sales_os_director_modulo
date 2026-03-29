@@ -74,6 +74,8 @@ export async function GET(request: NextRequest) {
         leads_recibidos: 0, intentos_contacto: 0, contactados: 0,
         citas_agendadas: 0, citas_show: 0, citas_noshow: 0,
         citas_calificadas: 0, citas_reprogramadas: 0,
+        mensajes_enviados: 0, respuestas_obtenidas: 0,
+        asistio_reunion: null as boolean | null,
       })
     }
     const entry = setterTableMap.get(id)!
@@ -85,6 +87,9 @@ export async function GET(request: NextRequest) {
     entry.citas_noshow = (entry.citas_noshow as number) + (r.citas_noshow || 0)
     entry.citas_calificadas = (entry.citas_calificadas as number) + (r.citas_calificadas || 0)
     entry.citas_reprogramadas = (entry.citas_reprogramadas as number) + (r.citas_reprogramadas || 0)
+    entry.mensajes_enviados = (entry.mensajes_enviados as number) + (r.mensajes_enviados || 0)
+    entry.respuestas_obtenidas = (entry.respuestas_obtenidas as number) + (r.respuestas_obtenidas || 0)
+    if (r.asistio_reunion !== null && r.asistio_reunion !== undefined) entry.asistio_reunion = r.asistio_reunion
   }
 
   // Closer table data
@@ -101,6 +106,8 @@ export async function GET(request: NextRequest) {
         pagos_completos: 0, pagos_parciales: 0, pagos_nulo: 0,
         motivo_precio: 0, motivo_consultar: 0, motivo_momento: 0,
         motivo_competencia: 0, motivo_otro: 0,
+        propuestas_enviadas: 0, seguimientos_realizados: 0,
+        asistio_reunion: null as boolean | null,
       })
     }
     const entry = closerTableMap.get(id)!
@@ -120,6 +127,9 @@ export async function GET(request: NextRequest) {
     entry.motivo_momento = (entry.motivo_momento as number) + (r.motivo_momento || 0)
     entry.motivo_competencia = (entry.motivo_competencia as number) + (r.motivo_competencia || 0)
     entry.motivo_otro = (entry.motivo_otro as number) + (r.motivo_otro || 0)
+    entry.propuestas_enviadas = (entry.propuestas_enviadas as number) + (r.propuestas_enviadas || 0)
+    entry.seguimientos_realizados = (entry.seguimientos_realizados as number) + (r.seguimientos_realizados || 0)
+    if (r.asistio_reunion !== null && r.asistio_reunion !== undefined) entry.asistio_reunion = r.asistio_reunion
   }
 
   return NextResponse.json({
