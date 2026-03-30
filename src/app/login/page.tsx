@@ -127,6 +127,11 @@ export default function LoginPage() {
               Registrate como Director
             </Link>
           </p>
+          <p className="text-center text-sm text-gray-600 mt-2">
+            <Link href="/recuperar" className="hover:text-gray-400 transition-colors">
+              ¿Olvidaste tu contraseña?
+            </Link>
+          </p>
         </div>
       </div>
     </div>
