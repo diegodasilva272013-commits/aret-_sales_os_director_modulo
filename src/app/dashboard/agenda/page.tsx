@@ -6,7 +6,7 @@ import {
   Plus, ChevronLeft, ChevronRight, Calendar as CalIcon, Clock,
   CheckCircle2, Circle, AlertCircle, X, Users2, Video,
   ArrowRight, RotateCcw, Trash2, Flag, StickyNote, Phone,
-  LayoutGrid, List, CalendarDays
+  LayoutGrid, List, CalendarDays, Mic
 } from 'lucide-react'
 
 const C = {
@@ -444,6 +444,11 @@ function DayView({ fecha, tareas, today, tipoConfig, prioridadConfig, getMemberN
                   {tarea.veces_pospuesta > 0 && (
                     <span className="flex items-center gap-1" style={{ color: C.orange }}>
                       <RotateCcw size={12} /> Pospuesta {tarea.veces_pospuesta}x
+                    </span>
+                  )}
+                  {tarea.notas && (
+                    <span className="flex items-center gap-1" style={{ color: C.accentLight }}>
+                      <Mic size={12} /> Audio
                     </span>
                   )}
                 </div>
@@ -917,12 +922,21 @@ function TareaModal({ tarea, fecha, team, onClose, onSave }: {
             />
           </div>
 
-          {/* Audio notes - only for existing tasks */}
-          {isEdit && (
-            <div>
+          {/* Audio notes */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: C.textMuted }}>
+              <Mic size={12} className="inline mr-1 -mt-0.5" />
+              Notas de Audio
+            </label>
+            {isEdit ? (
               <AudioRecorder entidadTipo="tarea" entidadId={tarea!.id} />
-            </div>
-          )}
+            ) : (
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs" style={{ background: `${C.accent}08`, border: `1px dashed ${C.accent}30`, color: C.textDim }}>
+                <Mic size={14} style={{ color: C.accentLight }} />
+                <span>Guardá la tarea primero para poder agregar notas de audio</span>
+              </div>
+            )}
+          </div>
 
           {/* Error */}
           {error && (
