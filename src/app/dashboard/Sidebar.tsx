@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Receipt, Wallet, Users2,
   Award, ChevronDown, ChevronRight, Menu, X,
   BarChart2, UserCheck,
-  BookOpen, Handshake, Radio, ShieldCheck, Settings
+  BookOpen, Handshake, Radio, ShieldCheck, Settings, CalendarDays
 } from 'lucide-react'
 
 const C = {
@@ -51,6 +51,7 @@ const navItems: NavItem[] = [
       { label: 'Por Proyecto', href: '/dashboard/proyectos' },
     ],
   },
+  { label: 'Agenda', href: '/dashboard/agenda', icon: CalendarDays },
   { label: 'Equipo', href: '/dashboard/equipo', icon: UserCheck },
   { label: 'Analytics', href: '/dashboard/analytics', icon: BarChart2 },
   { label: 'Comisiones', href: '/dashboard/comisiones', icon: Award },
