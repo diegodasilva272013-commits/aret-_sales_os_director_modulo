@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import AudioRecorder from '@/components/AudioRecorder'
 import {
   Plus, ChevronLeft, ChevronRight, Calendar as CalIcon, Clock,
   CheckCircle2, Circle, AlertCircle, X, Users2, Video,
@@ -916,6 +917,13 @@ function TareaModal({ tarea, fecha, team, onClose, onSave }: {
               style={inputStyle}
             />
           </div>
+
+          {/* Audio notes - only for existing tasks */}
+          {isEdit && (
+            <div>
+              <AudioRecorder entidadTipo="tarea" entidadId={tarea!.id} />
+            </div>
+          )}
 
           {/* Error */}
           {error && (

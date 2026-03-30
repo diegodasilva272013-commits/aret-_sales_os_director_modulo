@@ -16,7 +16,7 @@ interface AudioNota {
 }
 
 interface AudioRecorderProps {
-  entidadTipo: 'proyecto' | 'cliente' | 'venta' | 'brief' | 'transaccion' | 'cartera' | 'general'
+  entidadTipo: 'proyecto' | 'cliente' | 'venta' | 'brief' | 'transaccion' | 'cartera' | 'general' | 'tarea'
   entidadId: string
   readOnly?: boolean
 }
