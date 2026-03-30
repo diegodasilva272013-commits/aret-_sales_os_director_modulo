@@ -324,7 +324,6 @@ export default function AgendaPage() {
           tareas={tareas}
           today={today}
           tipoConfig={tipoConfig}
-          prioridadConfig={prioridadConfig}
           toggleComplete={toggleComplete}
           openEdit={openEdit}
           openNew={openNew}
@@ -479,9 +478,9 @@ function DayView({ fecha, tareas, today, tipoConfig, prioridadConfig, getMemberN
 }
 
 // =================== WEEK VIEW ===================
-function WeekView({ currentDate, tareas, today, tipoConfig, prioridadConfig, toggleComplete, openEdit, openNew }: {
+function WeekView({ currentDate, tareas, today, tipoConfig, toggleComplete, openEdit, openNew }: {
   currentDate: Date; tareas: Tarea[]; today: string;
-  tipoConfig: (t: string) => (typeof TIPOS)[0]; prioridadConfig: (p: string) => (typeof PRIORIDADES)[0];
+  tipoConfig: (t: string) => (typeof TIPOS)[0];
   toggleComplete: (t: Tarea) => void; openEdit: (t: Tarea) => void; openNew: (f: string) => void;
 }) {
   const days = getWeekDays(currentDate)
