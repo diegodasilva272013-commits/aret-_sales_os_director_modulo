@@ -26,7 +26,55 @@ export async function POST(request: NextRequest) {
 
   if (createError) {
     if (createError.message.includes('already been registered')) {
-      return NextResponse.json({ error: 'Este email ya está registrado' }, { status: 409 })
+      // Check if this is an orphan auth user (has auth but no profile)
+      // This happens when a previous registration was interrupted
+      const { data: { users } } = await adminSupabase.auth.admin.listUsers()
+      const existingUser = users?.find(u => u.email === email)
+
+      if (existingUser) {
+        const { data: existingProfile } = await adminSupabase
+          .from('profiles')
+          .select('id')
+          .eq('id', existingUser.id)
+          .single()
+
+        if (!existingProfile) {
+          // Orphan user: delete and let them re-register cleanly
+          await adminSupabase.auth.admin.deleteUser(existingUser.id)
+
+          // Retry creating the user
+          const { data: retryUser, error: retryError } = await adminSupabase.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+          })
+
+          if (retryError) {
+            return NextResponse.json({ error: retryError.message }, { status: 500 })
+          }
+
+          const { error: retryProfileError } = await adminSupabase.from('profiles').insert({
+            id: retryUser.user.id,
+            nombre,
+            apellido: apellido || null,
+            rol: 'director',
+            activo: true,
+            director_id: retryUser.user.id,
+          })
+
+          if (retryProfileError) {
+            await adminSupabase.auth.admin.deleteUser(retryUser.user.id)
+            return NextResponse.json({ error: retryProfileError.message }, { status: 500 })
+          }
+
+          return NextResponse.json({ success: true })
+        }
+      }
+
+      return NextResponse.json(
+        { error: 'Este email ya está registrado. Probá iniciar sesión.', code: 'EMAIL_EXISTS' },
+        { status: 409 }
+      )
     }
     return NextResponse.json({ error: createError.message }, { status: 500 })
   }

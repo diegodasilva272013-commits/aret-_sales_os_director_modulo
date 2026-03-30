@@ -8,11 +8,13 @@ export default function RegistroPage() {
   const [formData, setFormData] = useState({ nombre: '', apellido: '', email: '', password: '', confirmPassword: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [errorCode, setErrorCode] = useState('')
   const [success, setSuccess] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    setErrorCode('')
 
     if (formData.password !== formData.confirmPassword) {
       setError('Las contraseñas no coinciden')
@@ -26,27 +28,33 @@ export default function RegistroPage() {
 
     setLoading(true)
 
-    const res = await fetch('/api/auth/registro', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nombre: formData.nombre,
-        apellido: formData.apellido,
-        email: formData.email,
-        password: formData.password,
-      }),
-    })
+    try {
+      const res = await fetch('/api/auth/registro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre: formData.nombre,
+          apellido: formData.apellido,
+          email: formData.email,
+          password: formData.password,
+        }),
+      })
 
-    const json = await res.json()
+      const json = await res.json()
 
-    if (!res.ok) {
-      setError(json.error || 'Error al crear la cuenta')
+      if (!res.ok) {
+        setError(json.error || 'Error al crear la cuenta')
+        setErrorCode(json.code || '')
+        setLoading(false)
+        return
+      }
+
+      setSuccess(true)
+    } catch {
+      setError('Error de conexión. Verificá tu internet e intentá de nuevo.')
+    } finally {
       setLoading(false)
-      return
     }
-
-    setSuccess(true)
-    setLoading(false)
   }
 
   if (success) {
@@ -178,9 +186,16 @@ export default function RegistroPage() {
 
             {/* Error */}
             {error && (
-              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2.5">
-                <AlertCircle size={16} className="text-red-400 shrink-0" />
-                <p className="text-red-400 text-sm">{error}</p>
+              <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2.5">
+                <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-red-400 text-sm">{error}</p>
+                  {errorCode === 'EMAIL_EXISTS' && (
+                    <Link href="/login" className="text-indigo-400 hover:text-indigo-300 text-sm mt-1 inline-block">
+                      Ir a iniciar sesión →
+                    </Link>
+                  )}
+                </div>
               </div>
             )}
 

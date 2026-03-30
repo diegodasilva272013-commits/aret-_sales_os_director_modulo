@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Receipt, Wallet, Users2,
   Award, ChevronDown, ChevronRight, Menu, X,
   BarChart2, UserCheck,
-  BookOpen, Handshake, Radio, ShieldCheck
+  BookOpen, Handshake, Radio, ShieldCheck, Settings
 } from 'lucide-react'
 
 const C = {
@@ -170,6 +170,22 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      {/* Profile link */}
+      <div className="px-2 pb-1 shrink-0" style={{ borderTop: `1px solid ${C.border}` }}>
+        <Link
+          href="/dashboard/perfil"
+          onClick={() => setMobileOpen(false)}
+          className="flex items-center gap-3 px-3 py-2.5 mt-1 rounded-xl transition-all group"
+          style={{
+            background: pathname === '/dashboard/perfil' ? `${C.accent}12` : 'transparent',
+            color: pathname === '/dashboard/perfil' ? C.accentLight : C.textDim,
+          }}
+        >
+          <Settings size={18} style={{ color: pathname === '/dashboard/perfil' ? C.accentLight : C.textDim, flexShrink: 0 }} />
+          {!collapsed && <span className="text-[13px] font-semibold">Mi Perfil</span>}
+        </Link>
+      </div>
 
       {/* Collapse toggle (desktop) */}
       <div className="hidden lg:flex items-center justify-center py-3 shrink-0" style={{ borderTop: `1px solid ${C.border}` }}>
