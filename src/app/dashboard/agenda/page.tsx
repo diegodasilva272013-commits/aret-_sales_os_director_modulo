@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import AudioRecorder from '@/components/AudioRecorder'
 import {
   Plus, ChevronLeft, ChevronRight, Calendar as CalIcon, Clock,
   CheckCircle2, Circle, AlertCircle, X, Users2, Video,
   ArrowRight, RotateCcw, Trash2, Flag, StickyNote, Phone,
-  LayoutGrid, List, CalendarDays, Mic
+  LayoutGrid, List, CalendarDays, Mic, Paperclip, FileText, Image as ImageIcon, Download
 } from 'lucide-react'
 
 const C = {
@@ -653,6 +653,20 @@ function TareaModal({ tarea, fecha, team, onClose, onSave }: {
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  
+  // Attachments state
+  interface Adjunto { id: string; nombre: string; tipo_mime: string; tamano_bytes: number; url: string }
+  const [adjuntos, setAdjuntos] = useState<Adjunto[]>([])
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (isEdit) {
+      fetch(`/api/tareas/${tarea!.id}/adjuntos`).then(r => r.json()).then(d => {
+        if (Array.isArray(d)) setAdjuntos(d)
+      })
+    }
+  }, [isEdit, tarea])
 
   async function handleSave() {
     if (!form.titulo.trim()) { setError('El título es obligatorio'); return }
@@ -691,6 +705,39 @@ function TareaModal({ tarea, fecha, team, onClose, onSave }: {
         ? f.participantes_ids.filter(x => x !== id)
         : [...f.participantes_ids, id],
     }))
+  }
+
+  async function uploadFile(file: File) {
+    if (!isEdit) return
+    setUploading(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`/api/tareas/${tarea!.id}/adjuntos`, { method: 'POST', body: fd })
+    if (res.ok) {
+      const adj = await res.json()
+      setAdjuntos(prev => [adj, ...prev])
+    } else {
+      const { error } = await res.json()
+      setError(error || 'Error al subir archivo')
+    }
+    setUploading(false)
+  }
+
+  async function deleteAdjunto(adjId: string) {
+    if (!isEdit) return
+    await fetch(`/api/tareas/${tarea!.id}/adjuntos?adjuntoId=${adjId}`, { method: 'DELETE' })
+    setAdjuntos(prev => prev.filter(a => a.id !== adjId))
+  }
+
+  function getFileIcon(mime: string) {
+    if (mime.startsWith('image/')) return ImageIcon
+    return FileText
+  }
+
+  function formatSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1048576).toFixed(1)} MB`
   }
 
   const inputStyle: React.CSSProperties = { background: C.card, border: `1px solid ${C.borderLight}`, color: C.text }
@@ -934,6 +981,92 @@ function TareaModal({ tarea, fecha, team, onClose, onSave }: {
               <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs" style={{ background: `${C.accent}08`, border: `1px dashed ${C.accent}30`, color: C.textDim }}>
                 <Mic size={14} style={{ color: C.accentLight }} />
                 <span>Guardá la tarea primero para poder agregar notas de audio</span>
+              </div>
+            )}
+          </div>
+
+          {/* Adjuntos */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: C.textMuted }}>
+              <Paperclip size={12} className="inline mr-1 -mt-0.5" />
+              Archivos adjuntos
+            </label>
+            {isEdit ? (
+              <div className="space-y-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+                  onChange={e => {
+                    const f = e.target.files?.[0]
+                    if (f) uploadFile(f)
+                    e.target.value = ''
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-2 w-full px-4 py-2.5 rounded-xl text-xs font-medium transition-all hover:brightness-110 disabled:opacity-50"
+                  style={{ background: C.card, border: `1px dashed ${C.borderLight}`, color: C.accentLight }}
+                >
+                  {uploading ? (
+                    <div className="w-3.5 h-3.5 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+                  ) : (
+                    <Paperclip size={14} />
+                  )}
+                  {uploading ? 'Subiendo...' : 'Adjuntar archivo (PDF, imágenes, Excel, Word)'}
+                </button>
+
+                {adjuntos.length > 0 && (
+                  <div className="space-y-1.5">
+                    {adjuntos.map(adj => {
+                      const FIcon = getFileIcon(adj.tipo_mime)
+                      const isImage = adj.tipo_mime.startsWith('image/')
+                      return (
+                        <div
+                          key={adj.id}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all group"
+                          style={{ background: C.card, border: `1px solid ${C.borderLight}` }}
+                        >
+                          {isImage ? (
+                            <img src={adj.url} alt={adj.nombre} className="w-8 h-8 rounded object-cover shrink-0" />
+                          ) : (
+                            <FIcon size={16} style={{ color: C.accentLight }} className="shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate" style={{ color: C.text }}>{adj.nombre}</p>
+                            <p className="text-[10px]" style={{ color: C.textDim }}>{formatSize(adj.tamano_bytes)}</p>
+                          </div>
+                          <a
+                            href={adj.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 rounded hover:bg-white/5 transition-colors"
+                            style={{ color: C.textDim }}
+                            title="Descargar"
+                          >
+                            <Download size={13} />
+                          </a>
+                          <button
+                            onClick={() => deleteAdjunto(adj.id)}
+                            className="p-1 rounded hover:bg-red-500/10 transition-colors"
+                            style={{ color: C.textDim }}
+                            title="Eliminar"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs" style={{ background: `${C.accent}08`, border: `1px dashed ${C.accent}30`, color: C.textDim }}>
+                <Paperclip size={14} style={{ color: C.accentLight }} />
+                <span>Guardá la tarea primero para poder adjuntar archivos</span>
               </div>
             )}
           </div>
